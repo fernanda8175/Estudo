@@ -1,0 +1,23 @@
+spring:
+  profiles:
+    active: prod
+    #active: homolog
+    #active: dev
+    #active: @activatedProperties@
+
+  data:
+    rest:
+      detection-strategy: annotated
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+
+#Tratando de logs
+logging:
+  file: logs/gl.log
+
+server:
+  port: ${port:8081}
+  servlet:
+      path: /estudo
