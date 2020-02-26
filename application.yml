@@ -1,0 +1,12 @@
+spring:
+  data:
+    mongodb:
+      uri: ${DB_URL}
+amazonProperties:
+  endpointUrl: ${AWS_S3_ENDPOINT}
+  accessKey: ${AWS_ACCESS_KEY}
+  bucketName: ${AWS_S3_BUCKT_NAME}
+SITEProperties:
+  #endpointUrl: www.meusite.com.br
+  endpointUrl: ${SITE_URL}/resources
+  mockEndpoint: ${SITE_PRODUCT}/resources
