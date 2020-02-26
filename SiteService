@@ -1,0 +1,228 @@
+import java.util.Arrays;
+import java.util.List;
+import java.util.Optional;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.client.HttpStatusCodeException;
+import org.springframework.web.client.RestTemplate;
+
+import com.fastshop.commerce.domain.Customer;
+import com.fastshop.commerce.domain.CustomerAddressResponse;
+import com.fastshop.commerce.domain.Error;
+import com.fastshop.commerce.domain.Inventory;
+import com.fastshop.commerce.domain.InventoryUpdate;
+import com.fastshop.commerce.domain.ItemRequest;
+import com.fastshop.commerce.domain.ItemSITE;
+import com.fastshop.commerce.domain.ReturnListInventory;
+import com.fastshop.commerce.domain.Voltage;
+
+@Service
+@Transactional
+public class SITEService implements ServiceTemplate{
+
+	private final Logger logger = LoggerFactory.getLogger(this.getClass());
+
+	@Value("${SITEProperties.endpointUrl}")
+	private String endpointUrl;
+
+	@Value("${SITEProperties.timeout}")
+	private int timeout;
+	// responsável por buscar o usuário no SITE, através do token1 e token2
+	public Optional<?> findCustomerInfo(String token1, String token2) {
+
+		String url = endpointUrl + "/customer";
+		logger.info("findCustomerInfo..." + url);
+
+		HttpHeaders headers = new HttpHeaders();
+		headers.add("token1", token1);
+		headers.add("token2", token2);
+
+		RestTemplate rest = getRestTemplate();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+		HttpEntity<String> entity = new HttpEntity<String>(null, headers);
+		ResponseEntity<Customer> userInfo = null;
+		try {
+			userInfo = rest.exchange(url, HttpMethod.GET, entity, Customer.class);
+			return Optional.ofNullable(userInfo.getBody());
+
+		} catch (HttpStatusCodeException ex) {
+			Error error = new Error();
+			error.setCode(400);
+			error.setMessageCode("ERROR_CLIENT_NOTFOUND");
+			error.setMessage("Erro ao recuperar informações do usuário");
+			logger.error("Erro ao recuperar informações do usuário: " + ex.getResponseBodyAsString());
+			return Optional.ofNullable(error);
+		}
+
+	}
+
+	// responsável por buscar o produto no SITE, através do token1 e token2
+	public Optional<?> findProductInfo(ItemRequest itemRequest, String storeId) {
+
+		String url = endpointUrl + "/products" + itemRequest.getSku();
+		logger.info("Service - findProductInfo..." + url);
+
+		HttpHeaders headers = new HttpHeaders();
+
+		RestTemplate rest = getRestTemplate();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+		HttpEntity<String> entity = new HttpEntity<String>(null, headers);
+		ResponseEntity<ItemSITE> productInfo = null;
+		try {
+			productInfo = rest.exchange(url, HttpMethod.GET, entity, ItemSITE.class);
+			ItemSITE productSITE = productInfo.getBody();
+			/*if (productSITE != null && productSITE.getParentPartNumber() != null) {
+				productSITE.setVoltage(complementInfoProduct(productSITE.getParentPartNumber()));
+			}*/
+			if (productSITE.getVoltage() != null ) {
+				for(Voltage volt: productSITE.getVoltage()) {
+					if(volt.getIdentifier().isEmpty())
+						productSITE.setVoltage(null);
+				}
+			}
+			return Optional.ofNullable(productSITE);
+
+		} catch (HttpStatusCodeException ex) {
+			logger.error("Erro ao recuperar informações do produto: " + ex.getResponseBodyAsString());
+			return Optional.ofNullable(productInfo);
+		}
+
+	}
+	
+	public List<Voltage> complementInfoProduct(String skuParent) {
+		String url = endpointUrl + "/v4/products/byPartNumber/" + skuParent;
+		logger.info("complementInfoProduct - voltagem..." + url);
+		HttpHeaders headers = new HttpHeaders();
+		RestTemplate rest = getRestTemplate();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+		HttpEntity<String> entity = new HttpEntity<String>(null, headers);
+		ResponseEntity<ItemSITE> productInfo = null;
+		try {
+			productInfo = rest.exchange(url, HttpMethod.GET, entity, ItemSITE.class);
+			ItemSITE productSITE = productInfo.getBody();
+			
+			return productSITE.getVoltage();
+
+		} catch (HttpStatusCodeException ex) {
+			logger.error("Erro ao recuperar informações do produto: " + ex.getResponseBodyAsString());
+			return null;
+		}
+
+	}
+
+	
+	
+	public Optional<?> findProductInventory(ItemRequest itemRequest, InventoryUpdate inventoryUpdate, String storeId, String token1, String token2) {
+		
+		String url = "";
+		String sku = "";
+		if(inventoryUpdate == null) {
+			url = endpointUrl + "/inventory/product/" + itemRequest.getSku();
+			sku = itemRequest.getSku();
+		}else {
+			url = endpointUrl + "/inventory/product/" + inventoryUpdate.getSKU();
+			sku = inventoryUpdate.getSKU();
+		}
+		
+		logger.info("findProductInventory - Valida Estoque {" + sku +"} " + url);
+		HttpHeaders headers = new HttpHeaders();
+		headers.add("token1", token1);
+		headers.add("token2", token2);
+		
+		RestTemplate rest = getRestTemplate();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+		HttpEntity<String> entity = new HttpEntity<String>(null, headers);
+		ResponseEntity<Inventory> inventoryInfo = null;
+		try {
+			inventoryInfo = rest.exchange(url, HttpMethod.GET, entity, Inventory.class);
+			return Optional.ofNullable(inventoryInfo.getBody());
+
+		} catch (HttpStatusCodeException ex) {
+			logger.error("Erro ao recuperar informações do produto: " + ex.getResponseBodyAsString());
+			return Optional.ofNullable(inventoryInfo);
+		}
+	}
+
+	public Optional<?> findProductInventoryList(List<String> skus, String storeId, 
+			String token1, String token2) {
+
+		String sku = String.join(",", skus);
+
+		String url = endpointUrl + "/inventory/productList/" + sku;
+		
+		logger.info("findProductInventoryList - Valida Estoque " + url);
+		HttpHeaders headers = new HttpHeaders();
+		headers.add("token1", token1);
+		headers.add("token2", token2);
+		
+		RestTemplate rest = getRestTemplate();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+		HttpEntity<String> entity = new HttpEntity<String>(null, headers);
+		ResponseEntity<ReturnListInventory> inventoryInfo = null;
+		try {
+			inventoryInfo = rest.exchange(url, HttpMethod.GET, entity, ReturnListInventory.class);
+			return Optional.ofNullable(inventoryInfo.getBody());
+
+		} catch (HttpStatusCodeException ex) {
+			logger.error("Erro ao recuperar informações do produto: " + ex.getResponseBodyAsString());
+			return Optional.ofNullable(inventoryInfo);
+		}
+	}
+
+	
+	// responsável por buscar o endereço do usuário no SITE, através do token1 e token2
+	public Optional<?> findAddressInfo(String token1, String token2) {
+
+		String url = endpointUrl + "customer/addresses";
+		logger.info("findAddressInfo..." + url);
+
+		HttpHeaders headers = new HttpHeaders();
+		headers.add("token1", token1);
+		headers.add("token2", token2);
+
+		RestTemplate rest = getRestTemplate();
+		headers.setContentType(MediaType.APPLICATION_JSON);
+		headers.setAccept(Arrays.asList(MediaType.APPLICATION_JSON));
+		HttpEntity<String> entity = new HttpEntity<String>(null, headers);
+		ResponseEntity<CustomerAddressResponse> addressInfo = null;
+		try {
+			addressInfo = rest.exchange(url, HttpMethod.GET, entity, CustomerAddressResponse.class);
+			return Optional.ofNullable(addressInfo.getBody().getAddresses());
+
+		} catch (HttpStatusCodeException ex) {
+			ex.printStackTrace();
+			logger.error("Erro ao recuperar informações do usuário: " + ex.getResponseBodyAsString());
+			return Optional.ofNullable(addressInfo);
+		}
+
+	}
+	
+	
+	/**
+	 * 
+	 * */
+	public RestTemplate getRestTemplate() {
+		HttpComponentsClientHttpRequestFactory clientHttpRequestFactory = new HttpComponentsClientHttpRequestFactory();
+		clientHttpRequestFactory.setConnectTimeout(timeout);
+		RestTemplate restTemplate = new RestTemplate(clientHttpRequestFactory);
+		return restTemplate;
+
+	}
+
+
+}
